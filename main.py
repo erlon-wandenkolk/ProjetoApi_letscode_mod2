@@ -6,8 +6,8 @@ import json
 import matplotlib.pyplot as plt
 
 def ler_base():
-    df = pd.read_csv('https://raw.githubusercontent.com/erlon-wandenkolk/ProjetoApi_letscode_mod2/main/TA_PRECO_MEDICAMENTO.csv',sep=';',error_bad_lines=False,encoding="ISO-8859-1")
-    df.to_csv('base_medicamentos.csv', index=False)
+    # df = pd.read_csv('https://raw.githubusercontent.com/erlon-wandenkolk/ProjetoApi_letscode_mod2/main/TA_PRECO_MEDICAMENTO.csv',sep=';',error_bad_lines=False,encoding="ISO-8859-1")
+    # df.to_csv('base_medicamentos.csv', index=False)
     df = pd.read_csv('base_medicamentos.csv',thousands='.',decimal=',')
     return df
 
@@ -33,15 +33,16 @@ def filtrar_base(df):
 def criar_groupby(df):
     meu_groupby = df.groupby('SUBSTÂNCIA').agg({'PF 0%':'mean',
                              'PMC 0%':'mean', } ,index=True)
-
     meu_groupby['Est. Med. Margem Lucro %'] = (meu_groupby['PMC 0%']/meu_groupby['PF 0%']-1)*100
+
     return meu_groupby
 
 def criar_figura(df_groupby):
-    filtro = df_groupby['Est. Med. Margem Lucro %'] > 0
+    filtro = (df_groupby['Est. Med. Margem Lucro %'] > 0) & (df_groupby['Est. Med. Margem Lucro %'] < 200)
     df_imagem = df_groupby[filtro].plot(y='Est. Med. Margem Lucro %')
-    df_imagem.savefig('grafico.png')
-    return df_imagem.plot()
+    plt.savefig('grafico.jpeg')
+
+
 
 app = Flask(__name__)
 api = Api(app)
@@ -62,17 +63,18 @@ class Agrupamento(Resource):
     df = ler_base()
     limpar_base(df)
     df = filtrar_base(df)
+    group_by = criar_groupby(df)
 
     def get(self,tipo):
-        df = criar_groupby(df)
+        group_by = criar_groupby(df)
         if tipo == 0:
-            df.to_csv('agrupamento.csv')
-            return df.to_csv()
+            group_by.to_csv('agrupamento.csv')
+            return group_by.to_csv()
         if tipo == 1:
-            df.to_json('agrupamento.json')
-            return df.to_json()
+            group_by.to_json('agrupamento.json')
+            return group_by.to_json()
         if tipo == 2:
-            return criar_figura(df)
+            return criar_figura(group_by)
 
 api.add_resource(Medicamento, '/medicamentos')
 api.add_resource(Agrupamento, '/agrupar/<int:tipo>')
