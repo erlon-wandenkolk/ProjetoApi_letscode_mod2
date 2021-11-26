@@ -3,32 +3,79 @@ from flask_restful import Resource, Api
 import pandas as pd
 import requests
 import json
+import matplotlib.pyplot as plt
+
+def ler_base():
+    df = pd.read_csv('https://raw.githubusercontent.com/erlon-wandenkolk/ProjetoApi_letscode_mod2/main/TA_PRECO_MEDICAMENTO.csv',sep=';',error_bad_lines=False,encoding="ISO-8859-1")
+    df.to_csv('base_medicamentos.csv', index=False)
+    df = pd.read_csv('base_medicamentos.csv',thousands='.',decimal=',')
+    return df
+
+def limpar_base(df):
+    eliminar_estes = ['CNPJ', 'LABORATÓRIO', 'CÓDIGO GGREM', 'REGISTRO',
+           'EAN 1', 'EAN 2', 'EAN 3', 'APRESENTAÇÃO',
+           'CLASSE TERAPÊUTICA', 'TIPO DE PRODUTO (STATUS DO PRODUTO)',
+           'REGIME DE PREÇO', 'PF 12%', 'PF 17%',
+           'PF 17% ALC', 'PF 17,5%', 'PF 17,5% ALC', 'PF 18% ALC',
+           'PMC 12%', 'PMC 17%', 'PMC 17% ALC', 'PMC 17,5%',
+           'PMC 17,5% ALC', 'PMC 18% ALC', 'CAP', 'CONFAZ 87', 'ICMS 0%',
+           'ANÁLISE RECURSAL',
+           'LISTA DE CONCESSÃO DE CRÉDITO TRIBUTÁRIO (PIS/COFINS)',
+           'TARJA']
+
+    df.drop(eliminar_estes,inplace=True,axis=1)
+    return df
+
+def filtrar_base(df):
+    filtro = (df['RESTRIÇÃO HOSPITALAR'] == 'Não') & (df['COMERCIALIZAÇÃO 2020'] == 'Sim')
+    return df[filtro]
+
+def criar_groupby(df):
+    meu_groupby = df.groupby('SUBSTÂNCIA').agg({'PF 0%':'mean',
+                             'PMC 0%':'mean', } ,index=True)
+
+    meu_groupby['Est. Med. Margem Lucro %'] = (meu_groupby['PMC 0%']/meu_groupby['PF 0%']-1)*100
+    return meu_groupby
+
+def criar_figura(df_groupby):
+    filtro = df_groupby['Est. Med. Margem Lucro %'] > 0
+    df_imagem = df_groupby[filtro].plot(y='Est. Med. Margem Lucro %')
+    df_imagem.savefig('grafico.png')
+    return df_imagem.plot()
 
 app = Flask(__name__)
 api = Api(app)
 
-df = pd.read_csv('https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/dados-ba-4.csv')
-df.to_csv('produtos.csv', index=False)
+df = ler_base()
+limpar_base(df)
+df = filtrar_base(df)
 
-df_produtos = pd.read_csv('produtos.csv')
+class Medicamento(Resource):
+    df = ler_base()
+    limpar_base(df)
+    df = filtrar_base(df)
 
-df_produtos = pd.read_csv('produtos.csv')
+    def get(self):
+       return df.to_json()
 
-produto_principal_marketing = df_produtos['id'] == 488
-df_produtos[produto_principal_marketing]
+class Agrupamento(Resource):
+    df = ler_base()
+    limpar_base(df)
+    df = filtrar_base(df)
 
-class Produto(Resource):
-    def get(self, produto_id):
-        produto_procurado = df_produtos['id'] == produto_id
-        produto = df_produtos[produto_procurado]
-        return produto.to_json()
+    def get(self,tipo):
+        df = criar_groupby(df)
+        if tipo == 0:
+            df.to_csv('agrupamento.csv')
+            return df.to_csv()
+        if tipo == 1:
+            df.to_json('agrupamento.json')
+            return df.to_json()
+        if tipo == 2:
+            return criar_figura(df)
 
-    def post(self, produto_id):
-        dados = request.form['data']
-        print(produto_id, dados)
-        return produto.to_json()
-
-api.add_resource(Produto, '/produtos/<int:produto_id>')
+api.add_resource(Medicamento, '/medicamentos')
+api.add_resource(Agrupamento, '/agrupar/<int:tipo>')
 
 if __name__ == '__main__':
     app.run(debug=True)
